@@ -519,7 +519,7 @@ namespace QueryFormatter
                 sinqleQuoIndex = sql_main.IndexOf("'", sinqleQuoIndex + 1);
             }
 
-            string[] tempWords = sql_main.Split(' ');
+            string[] tempWords = sql_main.Split(' ')   ;
 
             for (int i = 0; i < tempWords.Count(); i++)
                 words.Add(i, tempWords[i]);
