@@ -8,30 +8,30 @@
     ".NETCoreApp,Version=v3.1": []
   },
   "packageFolders": {
-    "C:\\Users\\Ильнар\\.nuget\\packages\\": {},
+    "C:\\Users\\khabibullini\\.nuget\\packages\\": {},
     "C:\\Program Files\\dotnet\\sdk\\NuGetFallbackFolder": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\Ильнар\\Desktop\\QueryFormatter\\QueryFormatter\\QueryFormatter.csproj",
+      "projectUniqueName": "D:\\git\\main_repo\\QueryFormatter\\QueryFormatter\\QueryFormatter.csproj",
       "projectName": "QueryFormatter",
-      "projectPath": "C:\\Users\\Ильнар\\Desktop\\QueryFormatter\\QueryFormatter\\QueryFormatter.csproj",
-      "packagesPath": "C:\\Users\\Ильнар\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\Ильнар\\Desktop\\QueryFormatter\\QueryFormatter\\obj\\",
+      "projectPath": "D:\\git\\main_repo\\QueryFormatter\\QueryFormatter\\QueryFormatter.csproj",
+      "packagesPath": "C:\\Users\\khabibullini\\.nuget\\packages\\",
+      "outputPath": "D:\\git\\main_repo\\QueryFormatter\\QueryFormatter\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files\\dotnet\\sdk\\NuGetFallbackFolder"
       ],
       "configFilePaths": [
-        "C:\\Users\\Ильнар\\AppData\\Roaming\\NuGet\\NuGet.Config",
-        "C:\\Program Files\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        "C:\\Users\\khabibullini\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],
       "originalTargetFrameworks": [
         "netcoreapp3.1"
       ],
       "sources": {
-        "C:\\Program Files\\Microsoft SDKs\\NuGetPackages\\": {},
+        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {

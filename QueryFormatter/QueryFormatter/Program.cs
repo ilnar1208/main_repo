@@ -1,4 +1,9 @@
 ﻿using System;
+using System.Linq;
+using System.IO;
+using System.Text;
+using System.Collections.Generic;
+
 
 namespace QueryFormatter
 {
@@ -28,6 +33,11 @@ namespace QueryFormatter
         static List<string> specialUnIntendWords = new List<string>();
         static List<string> specialWords = new List<string>();
         static Dictionary<string, string> comments = new Dictionary<string, string>();
+        static Dictionary<int, string> words = new Dictionary<int, string>();
+        static List<Parenthese> parentheses = new List<Parenthese>();
+        static List<WriteLine> lines = new List<WriteLine>();
+        static StringComparison cmp = StringComparison.InvariantCultureIgnoreCase;
+        static Dictionary<string, string> singleQuotes = new Dictionary<string, string>();
 
 
         static string sql_main = "";
@@ -169,17 +179,289 @@ namespace QueryFormatter
         }
 
 
+        static void AddLine(int index, WriteLine line)
+        {
+            if (index < 0)
+                AddLineAtEnd(line);
+            else
+                AddLineAfter(index, line);
+        }
+
+
+        static void AddLineAtEnd(WriteLine line)
+        {
+            lines.Add(line);
+        }
+
+        static void AddLineAfter(int index, WriteLine line)
+        {
+            lines.Insert(index, line);
+        }
+
+        static int CalcIntendSize(int lineIndex)
+        {
+            List<WriteLine> lineList = new List<WriteLine>();
+            for(int i = lineIndex - 1; i > -1; i--)
+            {
+                lineList.Add(lines[i]);
+                if (lines[i].isNewLine)
+                    break;
+            }
+
+            if (lineList.Count() == 0)
+                return lines[lineIndex].intendSize;
+            else
+            {
+                int itdSize = 0;
+                foreach(var v in lineList)
+                {
+                    itdSize = itdSize + ("".PadLeft(v.intendSize) + v.line).Length;
+                }
+                return itdSize + lines[lineIndex].intendSize;
+            }
+        }
+
+
+        static void Process(int startIndex, int endIndex, int lineIndex)
+        {
+            int ids = 0;
+            int insertIndex = -1;
+            List<int> caseIds = new List<int>();
+            int curCaseIds = -1;
+            if (lineIndex >= 0)
+            {
+                WriteLine tmpL = lines[lineIndex];
+                if (tmpL.isNewLine)
+                    ids = lines[lineIndex].intendSize;
+                else
+                    ids = CalcIntendSize(lineIndex) +1; // Добавляем единицу из-за открывающей скобки
+                lines.RemoveAt(lineIndex);
+                insertIndex = lineIndex - 1;
+            }    
+            
+            for (int i = startIndex; i < endIndex; i++)
+            {
+                if (lineIndex >= 0)
+                    insertIndex = insertIndex + 1;
+                string prevWord = "";
+                string nextWord = "";
+                string curWord = words[i];
+
+                if (i != 0)
+                    prevWord = words[i - 1];
+                if (i != words.Count() - 1)
+                    nextWord = words[i + 1];
+
+
+                if (curWord.Equals("(", cmp))
+                {
+                    if (lineIndex >= 0 && startIndex == i)
+                    {
+                        if (prevWord.Equals("from", cmp) || prevWord.Equals("where", cmp))
+                        {
+                            AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
+                            ids += 1;
+                        }
+                        else
+                        {
+                            if (prevWord.Equals(",", cmp) || prevWord.Equals("in", cmp) || prevWord.Equals("exists", cmp) || prevWord.Equals("case", cmp)
+                                || prevWord.Equals("else", cmp) || prevWord.Equals("when", cmp) || prevWord.Equals("then", cmp) || prevWord.Equals("=", cmp)
+                                 || prevWord.Equals("and", cmp))
+                                AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 1, isNewLine = false });
+                            else
+                                AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 0, isNewLine = false });
+                        }
+                    }
+                    else
+                    {
+                        Parenthese par = parentheses.Where(p => p.left == i).First();
+                        if (prevWord.Equals("from", cmp) || prevWord.Equals("where", cmp))
+                            AddLine(insertIndex, new WriteLine { line = par.repl_str, intendSize = ids, isNewLine = true });
+                        else if (prevWord.Equals(",", cmp) || prevWord.Equals("in", cmp) || prevWord.Equals("exists", cmp) || prevWord.Equals("case", cmp)
+                                 || prevWord.Equals("else", cmp) || prevWord.Equals("when", cmp) || prevWord.Equals("then", cmp) || prevWord.Equals("=", cmp)
+                                 || prevWord.Equals("and", cmp))
+                            AddLine(insertIndex, new WriteLine { line = par.repl_str, intendSize = 1, isNewLine = false });
+                        else
+                            AddLine(insertIndex, new WriteLine { line = par.repl_str, intendSize = 0, isNewLine = false });
+                        i = par.right;
+                    }
+
+                    continue;
+                }
+
+                if (curWord.Equals("select", cmp))
+                {
+                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
+                    ids += 2;
+                    continue;
+                }
+
+                if (curWord.Equals("from", cmp))
+                {
+                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids - 2, isNewLine = true });
+                    continue;
+                }
+
+                if (curWord.Equals("where", cmp))
+                {
+                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids - 2, isNewLine = true });
+                    continue;
+                }
+                if (curWord.Equals("by", cmp))
+                {
+                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 1, isNewLine = false });
+                    continue;
+                }
+
+                if (curWord.Equals("case", cmp))
+                {
+                    if (lineIndex >= 0)
+                    {
+                        if(prevWord.Equals("("))
+                        {
+                            AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 0, isNewLine = false });
+                            curCaseIds = CalcIntendSize(insertIndex);
+                        }
+                        else
+                        {
+                            AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 1, isNewLine = false });
+                            curCaseIds = CalcIntendSize(insertIndex);
+                        }
+                    }
+                    else
+                    {
+                        if (prevWord.Equals("("))
+                        {
+                            AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 0, isNewLine = false });
+                            curCaseIds = CalcIntendSize(lines.Count() - 1);
+                        }
+                        else
+                        {
+                            AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 1, isNewLine = false });
+                            curCaseIds = CalcIntendSize(lines.Count() - 1);
+                        }
+                    }
+                    
+                    caseIds.Add(curCaseIds);
+                    continue;
+                }
+
+                if (curWord.Equals("when", cmp))
+                {
+                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = curCaseIds + 2, isNewLine = true });
+                    continue;
+                }
+
+                if (curWord.Equals("then", cmp))
+                {
+                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = curCaseIds + 4, isNewLine = true });
+                    continue;
+                }
+
+                if (curWord.Equals("else", cmp))
+                {
+                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = curCaseIds + 2, isNewLine = true });
+                    continue;
+                }
+
+                if (prevWord.Equals("else", cmp))
+                {
+                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = curCaseIds + 4, isNewLine = true });
+                    continue;
+                }
+
+                if (curWord.Equals("end", cmp))
+                {
+                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = curCaseIds, isNewLine = true });
+                    caseIds.RemoveAt(caseIds.Count() - 1);
+                    if (caseIds.Count() > 0)
+                        curCaseIds = caseIds.Last();
+                    else
+                        curCaseIds = -1;
+                    continue;
+                }
+
+                if (curWord.Equals("group", cmp) || curWord.Equals("order", cmp))
+                {
+                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids - 2, isNewLine = true });
+                    continue;
+                }
+
+                if (curWord.Equals("by", cmp))
+                {
+                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 1, isNewLine = false });
+                    continue;
+                }
+
+                if (curWord.Equals("and", cmp))
+                {
+                    if (curCaseIds >= 0)
+                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = curCaseIds + 7, isNewLine = true });
+                    else
+                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
+                    continue;
+                }
+                if (curWord.Equals("or", cmp))
+                {
+                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
+                    continue;
+                }
+
+                if (lineIndex < 0 && curWord.Equals(","))
+                {
+                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
+                    continue;
+                }
+
+                if (lineIndex > 0 && curWord.Equals(","))
+                {
+                    if (words[startIndex + 1].Equals("select", cmp))
+                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
+                    else
+                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 0, isNewLine = false });
+                    continue;
+                }
+
+                if (prevWord.Equals("select", cmp) || prevWord.Equals("from", cmp) || prevWord.Equals("by", cmp) || prevWord.Equals("where", cmp))
+                {
+                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
+                }
+                else if (lineIndex >= 0 && prevWord.Equals("("))
+                {
+                    if (words[startIndex + 1].Equals("select", cmp) && words[startIndex - 1].Equals("where", cmp))
+                    {
+                        ids += 1;
+                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
+                    }
+                    else
+                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 0, isNewLine = false });
+                }
+                else if (lineIndex >= 0 && curWord.Equals(")", cmp))
+                {
+                    if (words[startIndex - 1].Equals("from", cmp)/* || words[startIndex - 1].Equals("where", cmp)*/)
+                    {
+                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = lines[startIndex].intendSize, isNewLine = true });
+                    }
+                    else if (words[startIndex + 1].Equals("select", cmp)
+                        && !(words[startIndex - 1].Equals("from", cmp) || words[startIndex - 1].Equals("where", cmp)))
+                    {
+                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = CalcIntendSize(startIndex), isNewLine = true });
+                    }
+                    else
+                    {
+                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 0, isNewLine = false });
+                    }
+                }
+                else
+                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 1, isNewLine = false });
+            }
+        }
+
         static void Main(string[] args)
         {
-            string pathIn = @"D:\SQL\input.sql";
-            string pathOut = @"D:\SQL\output.sql";
-            Dictionary<int, string> words = new Dictionary<int, string>();
-            List<Parenthese> parentheses = new List<Parenthese>();
-            List<WriteLine> lines = new List<WriteLine>();
-
-            StringComparison cmp = StringComparison.InvariantCultureIgnoreCase;
+            string pathIn = @".\SQL\input.sql";
+            string pathOut = @".\SQL\output.sql";
             bool isComment = false;
-            string comment = "";
             specialIntendWords.Add("select");
             specialIntendWords.Add("from");
             specialIntendWords.Add("where");
@@ -193,8 +475,8 @@ namespace QueryFormatter
                     line = line.Trim();
                     if (String.IsNullOrEmpty(line)) // пропускаем пустые строки
                         continue;
-                    //InlineCommentDelete(ref line, ref isComment);
-                    InlineCommentHide(ref line, ref isComment, ref comment);
+                    InlineCommentDelete(ref line, ref isComment);
+                    //InlineCommentHide(ref line, ref isComment, ref comment);
 
                     line = line.Trim();
                     if (String.IsNullOrEmpty(line)) // пропускаем пустые строки после удаления комментариев
@@ -223,6 +505,20 @@ namespace QueryFormatter
                 }
             }
 
+            int sinqleQuoIndex = sql_main.IndexOf("'");
+            int iterQ = 0;
+
+            while (sinqleQuoIndex >= 0)
+            {
+                iterQ += 1;
+                int end = sql_main.IndexOf("'", sinqleQuoIndex + 1);
+                string text = sql_main.Substring(sinqleQuoIndex, end - sinqleQuoIndex + 1);
+                string keyQ = "etouqelgnis" + iterQ + "singlequote";
+                singleQuotes.Add(keyQ, text);
+                text = text.Replace(text, keyQ);
+                sinqleQuoIndex = sql_main.IndexOf("'", sinqleQuoIndex + 1);
+            }
+
             string[] tempWords = sql_main.Split(' ');
 
             for (int i = 0; i < tempWords.Count(); i++)
@@ -241,7 +537,7 @@ namespace QueryFormatter
             int iter = 0;
             foreach (int idx in lpList)
             {
-                iter = iter++;
+                iter += 1;
                 /*
                  * Для каждой открывающей скобки ищем такую закрывающую, которая
                  * 1. будет после открывающей
@@ -268,58 +564,39 @@ namespace QueryFormatter
             {
                 Parenthese tmp = parentheses[i];
                 tmp.innerPar = parentheses.Where(x => x.left > tmp.left && x.right < tmp.right
-                && parentheses.Where(t => t.left > tmp.left && t.left < x.left).Count() == 0
+                && parentheses.Where(t =>
+                    t.left > tmp.left && t.right < tmp.right
+                    && t.left > tmp.left && t.left < x.left).Count() == 0
                 ).ToList();
             }
 
+            Process(0, words.Count(), -1);
 
-            int ids = 0;
-            string tmpLine = "";
-            for (int i = 0; i < words.Count(); i++)
+            int index = lines.FindIndex(l => l.line.StartsWith("esehtnerap"));
+            int iterCount = 0;
+
+
+            while (index >= 0)
             {
-                string prevWord = "";
-                string nextWord = "";
-                string curWord = words[i];
-                if (i != 0)
-                    prevWord = words[i - 1];
-                if (i != words.Count() - 1)
-                    nextWord = words[i + 1];
+                WriteLine tmpL = lines[index];
+                Parenthese tmpP = parentheses.Where(p => p.repl_str.Equals(tmpL.line)).First();
+                Process(tmpP.left, tmpP.right + 1, index);
+                index = lines.FindIndex(l => l.line.StartsWith("esehtnerap"));
+                iterCount += 1;
+                /*if (iterCount >= 2)
+                    break;*/
+            }
 
-                if (curWord.Equals("("))
+            foreach(var sq in singleQuotes)
+            {
+                List<WriteLine> tmpLineList = lines.Where(l => l.line.Equals(sq.Key, cmp)).ToList();
+                int lineCount = tmpLineList.Count();
+
+                for(int i = 0; i < lineCount; i++)
                 {
-                    lines.Add(new WriteLine { line = curWord, intendSize = ids });
-                    if (nextWord.Equals("select"))
-                        ids += 1;
-                    continue;
+                    WriteLine tmp = tmpLineList[i];
+                    tmp.line = sq.Value;
                 }
-
-                if (curWord.Equals("select"))
-                {
-                    lines.Add(new WriteLine { line = curWord, intendSize = ids });
-                    ids += 2;
-                    continue;
-                }
-
-                if (curWord.Equals("from"))
-                {
-                    lines.Add(new WriteLine { line = curWord, intendSize = ids - 2 });
-                    continue;
-                }
-
-                if (curWord.Equals("by"))
-                {
-                    lines.Add(new WriteLine { line = prevWord + " " + curWord, intendSize = ids - 2 });
-                    continue;
-                }
-
-                if (curWord.Equals("group") || curWord.Equals("order"))
-                    continue;
-
-                if (tmpLine is null)
-                    tmpLine = curWord;
-                else
-                    tmpLine = tmpLine + " " + curWord;
-                //lines.Add(new WriteLine { line = curWord, intendSize = ids});
             }
 
             using (StreamWriter w = new StreamWriter(pathOut, false, System.Text.Encoding.Default))
@@ -329,37 +606,26 @@ namespace QueryFormatter
                     string line = t.left + "-" + t.right;
                     w.WriteLine(line);
                 }*/
-                //w.WriteLine(sql_main);
 
-                /*foreach (var l in lines)
+                string line = "";
+                WriteLine nextLine = new WriteLine();
+                WriteLine curLine;
+                for (int l = 0; l < lines.Count(); l++)
                 {
-                    w.WriteLine("".PadLeft(l.intendSize) + l.line);
-                }*/
-
-                /*int ids = 0;
-                string line = " ";
-                for (int i = 0; i < words.Count(); i++)
-                {
-                    if (words[i] == "from")
-                    { ids = ids - 2; line = words[i]; }
-                    else if (words[i] == "order")
-                    { ids = ids - 2; line = words[i]; continue; }
-                    else if (words[i] == "group")
-                    { ids = ids - 2; line = words[i]; continue; }
-                    else if (words[i] == "by")
-                    { line = line + " " + words[i]; continue; }
+                    curLine = lines[l];
+                    if (l != lines.Count() - 1)
+                        nextLine = lines[l + 1];
+                    if (l == 0)
+                        line = "".PadLeft(curLine.intendSize) + curLine.line;
                     else
-                        line = words[i];
+                        line = line + "".PadLeft(curLine.intendSize) + curLine.line;
+                    if (nextLine.isNewLine || l == lines.Count() - 1)
+                    {
+                        w.WriteLine(line);
+                        line = "";
+                    }
+                }
 
-                    w.WriteLine("".PadLeft(ids) + line);
-                    if (words[i] == "select")
-                        ids = ids + 2;
-                    if (words[i] == "from")
-                        ids = ids + 2;
-                    if (words[i] == "by")
-                        ids = ids + 2;
-
-                }*/
 
                 /*foreach (var t in words)
                 {
@@ -367,19 +633,6 @@ namespace QueryFormatter
                     w.WriteLine(line);
                 }*/
             }
-
-
-
-
-            /*using (StreamWriter w = new StreamWriter(pathOut, false, System.Text.Encoding.Default))
-            {
-                foreach (queryLine ql in queryLines)
-                {
-                    string line = "".PadLeft(ql.intendSize) + ql.Line;
-                    w.WriteLine(line);
-                }
-            }*/
-            Console.WriteLine("test");
         }
     }
 }

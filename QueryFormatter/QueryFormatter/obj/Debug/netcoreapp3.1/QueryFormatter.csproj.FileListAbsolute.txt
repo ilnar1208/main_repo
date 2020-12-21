@@ -1,0 +1,13 @@
+D:\git\main_repo\QueryFormatter\QueryFormatter\obj\Debug\netcoreapp3.1\QueryFormatter.csprojAssemblyReference.cache
+D:\git\main_repo\QueryFormatter\QueryFormatter\obj\Debug\netcoreapp3.1\QueryFormatter.AssemblyInfoInputs.cache
+D:\git\main_repo\QueryFormatter\QueryFormatter\obj\Debug\netcoreapp3.1\QueryFormatter.AssemblyInfo.cs
+D:\git\main_repo\QueryFormatter\QueryFormatter\obj\Debug\netcoreapp3.1\QueryFormatter.csproj.CoreCompileInputs.cache
+D:\git\main_repo\QueryFormatter\QueryFormatter\bin\Debug\netcoreapp3.1\QueryFormatter.exe
+D:\git\main_repo\QueryFormatter\QueryFormatter\bin\Debug\netcoreapp3.1\QueryFormatter.deps.json
+D:\git\main_repo\QueryFormatter\QueryFormatter\bin\Debug\netcoreapp3.1\QueryFormatter.runtimeconfig.json
+D:\git\main_repo\QueryFormatter\QueryFormatter\bin\Debug\netcoreapp3.1\QueryFormatter.runtimeconfig.dev.json
+D:\git\main_repo\QueryFormatter\QueryFormatter\bin\Debug\netcoreapp3.1\QueryFormatter.dll
+D:\git\main_repo\QueryFormatter\QueryFormatter\bin\Debug\netcoreapp3.1\QueryFormatter.pdb
+D:\git\main_repo\QueryFormatter\QueryFormatter\obj\Debug\netcoreapp3.1\QueryFormatter.dll
+D:\git\main_repo\QueryFormatter\QueryFormatter\obj\Debug\netcoreapp3.1\QueryFormatter.pdb
+D:\git\main_repo\QueryFormatter\QueryFormatter\obj\Debug\netcoreapp3.1\QueryFormatter.genruntimeconfig.cache
