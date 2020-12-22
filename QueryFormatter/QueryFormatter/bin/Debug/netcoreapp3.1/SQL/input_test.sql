@@ -1,10 +1,42 @@
-﻿select
+﻿with
+  dat as
+  (
+  
+  select
+   f.xMest xMest,
+
+f.XLicMest XLicMest,
+
+f.xLic xLic
+   from
+   dual
+)
+, asdfah as
+(
+
+  select
+f.xCode xCode,
+
+f.xdobito2 xdobito2,
+
+f.xpoteri2 xpoteri2,
+
+(f.xdobito - f.xdobito2) xdobito3,
+
+(f.xpoteri - f.xpoteri2) xpoteri3
+   from
+   dual
+)
+
+select
 
 f.xMest xMest,
 
 f.XLicMest XLicMest,
 
 f.xLic xLic,
+
+extract(month from :pdate) as asdf,
 
 f.xDick xDick,
 
@@ -44,7 +76,7 @@ from
   (case  
     when --mest.no = 18878422  
       mest.code_fox = 155 and test = test
-    then 'Азево-Салаушский участок с применением дифференцированной ставки по НДПИ'  
+    then '''Азево-Салаушск,ий'' участок с применением диф''ференцированной ставки по НДПИ'  
     when --mest.no = 18878596  
       mest.code_fox = 7 
     then 'Данково-Лебедянский горизонт Коробковского участка Бавлинского месторождения с применением дифференцированной ставки по НДПИ'  
