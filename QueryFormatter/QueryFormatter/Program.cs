@@ -126,9 +126,9 @@ namespace QueryFormatter
                 if (multiCommentIndexEnd > 0) // если конец мультистрочного комментария в этой же строке, то вырезаем его
                 {
                     isComment = false;
-                    comment = line.Substring(multiCommentIndexStart, multiCommentIndexEnd + 2);
+                    comment = line.Substring(multiCommentIndexStart, (multiCommentIndexEnd + 2) - multiCommentIndexStart);
                     comments.Add(key, comment);
-                    line = line.Substring(0, multiCommentIndexStart) + " " + key + " " + line.Substring(multiCommentIndexEnd + 2, line.Length - (multiCommentIndexEnd + 2));
+                    line = line.Substring(0, multiCommentIndexStart) + " " + /*key + " " +*/ line.Substring(multiCommentIndexEnd + 2, line.Length - (multiCommentIndexEnd + 2));
                     InlineCommentHide(ref line, ref isComment, ref comment);
                     return;
                 }
@@ -145,7 +145,7 @@ namespace QueryFormatter
                 isComment = false;
                 comment = comment + "/r/n" + line.Substring(0, multiCommentIndexEnd);
                 comments.Add(key, comment);
-                line = key + " " + line.Substring(multiCommentIndexEnd + 2, line.Length - (multiCommentIndexEnd + 2));
+                line = /*key + " " +*/ line.Substring(multiCommentIndexEnd + 2, line.Length - (multiCommentIndexEnd + 2));
                 InlineCommentHide(ref line, ref isComment, ref comment);
                 return;
             }
@@ -156,7 +156,7 @@ namespace QueryFormatter
             {
                 comment = line.Substring(singleCommentIndex, line.Length - singleCommentIndex);
                 comments.Add(key, comment);
-                line = line.Substring(0, singleCommentIndex).Trim() + " " + key;
+                line = line.Substring(0, singleCommentIndex).Trim()/* + " " + key*/;
                 return;
             }
         }
@@ -318,6 +318,11 @@ namespace QueryFormatter
                     continue;
                 }
 
+                if (curWord.StartsWith("tnemmoc"))
+                {
+                    int t = 1 + 1;
+                }
+
                 if (curWord.Equals("with", cmp))
                 {
                     if (prevWord.Equals("start"))
@@ -475,8 +480,10 @@ namespace QueryFormatter
                 }
 
                 if (lineIndex >= 0 && (words[startIndex - 1].Equals("extract", cmp) || words[startIndex - 1].Equals("trim", cmp)))
+                {
                     AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 1, isNewLine = false });
-
+                    continue;
+                }
 
                 if (curWord.Equals("by", cmp))
                 {
@@ -493,6 +500,7 @@ namespace QueryFormatter
                         AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
                     continue;
                 }
+
                 if (curWord.Equals("or", cmp))
                 {
                     AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
@@ -526,6 +534,7 @@ namespace QueryFormatter
                         AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 1, isNewLine = false });
                     else
                         AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
+                    continue;
                 }
                 else if (lineIndex >= 0 && prevWord.Equals("("))
                 {
@@ -536,6 +545,7 @@ namespace QueryFormatter
                     }
                     else
                         AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 0, isNewLine = false });
+                    continue;
                 }
                 else if (lineIndex >= 0 && curWord.Equals(")", cmp))
                 {
@@ -552,6 +562,7 @@ namespace QueryFormatter
                     {
                         AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 0, isNewLine = false });
                     }
+                    continue;
                 }
                 else
                     AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 1, isNewLine = false });
@@ -562,6 +573,7 @@ namespace QueryFormatter
         {
             string pathIn = @".\SQL\input.sql";
             string pathOut = @".\SQL\output.sql";
+            string commentsPathOut = @".\SQL\comments.sql";
             bool isComment = false;
             string comment = "";
             specialIntendWords.Add("select");
@@ -644,7 +656,17 @@ namespace QueryFormatter
                     lp.Key
                 ).ToArray();
 
+            int[] rpList =
+                (
+                from rp in words
+                where
+                    rp.Value.Equals(")")
+                select
+                    rp.Key
+                ).ToArray();
+
             int iter = 0;
+            //DateTime beginDate = DateTime.Now;
             foreach (int idx in lpList)
             {
                 iter += 1;
@@ -653,7 +675,7 @@ namespace QueryFormatter
                  * 1. будет после открывающей
                  * 2. количество открывающих и закрывающих скобок между ними будет равно
                  */
-                int rp =
+                /*int rp =
                     (
                     from w in words
                     where
@@ -664,13 +686,29 @@ namespace QueryFormatter
                         w.Key
                     select
                         w.Key
+                    ).First();*/
+                int rp =
+                    (
+                    from p in rpList
+                    where
+                        p > idx
+                        && lpList.Where(x => x > idx && x < p).Count() == rpList.Where(x => x > idx && x < p).Count()
+                    orderby
+                        p
+                    select
+                        p
                     ).First();
                 parentheses.Add(new Parenthese { left = idx, right = rp, repl_str = "esehtnerap" + iter + "parenthese", ids = 0, isProc = false, innerPar = new List<Parenthese>() });
             }
+            /*DateTime endDate = DateTime.Now;
+            TimeSpan rez = endDate - beginDate;
+            Console.WriteLine("{0}:{1}:{2}", rez.Minutes, rez.Seconds, rez.Milliseconds);
+            Console.ReadLine();*/
 
             int tmpCount = parentheses.Count();
 
-            for (int i = 0; i < tmpCount; i++)
+            // ненужная часть
+            /*for (int i = 0; i < tmpCount; i++)
             {
                 Parenthese tmp = parentheses[i];
                 tmp.innerPar = parentheses.Where(x => x.left > tmp.left && x.right < tmp.right
@@ -678,7 +716,7 @@ namespace QueryFormatter
                     t.left > tmp.left && t.right < tmp.right
                     && t.left > tmp.left && t.left < x.left).Count() == 0
                 ).ToList();
-            }
+            }*/
 
             Process(0, words.Count(), -1);
 
@@ -742,6 +780,15 @@ namespace QueryFormatter
                     string line = t.Key + "." + t.Value;
                     w.WriteLine(line);
                 }*/
+            }
+
+            using (StreamWriter w = new StreamWriter(commentsPathOut, false, System.Text.Encoding.Default))
+            {
+                foreach (var t in comments)
+                {
+                    string line = t.Value;
+                    w.WriteLine(line);
+                }
             }
         }
     }
