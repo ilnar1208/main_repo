@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "D:\\git\\main_repo\\QueryFormatter\\QueryFormatter\\QueryFormatter.csproj": {}
+    "D:\\git\\QueryFormatter\\Software\\.Net\\QueryFormatter\\QueryFormatter.csproj": {}
   },
   "projects": {
-    "D:\\git\\main_repo\\QueryFormatter\\QueryFormatter\\QueryFormatter.csproj": {
+    "D:\\git\\QueryFormatter\\Software\\.Net\\QueryFormatter\\QueryFormatter.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\git\\main_repo\\QueryFormatter\\QueryFormatter\\QueryFormatter.csproj",
+        "projectUniqueName": "D:\\git\\QueryFormatter\\Software\\.Net\\QueryFormatter\\QueryFormatter.csproj",
         "projectName": "QueryFormatter",
-        "projectPath": "D:\\git\\main_repo\\QueryFormatter\\QueryFormatter\\QueryFormatter.csproj",
+        "projectPath": "D:\\git\\QueryFormatter\\Software\\.Net\\QueryFormatter\\QueryFormatter.csproj",
         "packagesPath": "C:\\Users\\khabibullini\\.nuget\\packages\\",
-        "outputPath": "D:\\git\\main_repo\\QueryFormatter\\QueryFormatter\\obj\\",
+        "outputPath": "D:\\git\\QueryFormatter\\Software\\.Net\\QueryFormatter\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files\\dotnet\\sdk\\NuGetFallbackFolder"
@@ -21,15 +21,15 @@
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
         "originalTargetFrameworks": [
-          "netcoreapp3.1"
+          "netstandard2.0"
         ],
         "sources": {
           "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
-          "netcoreapp3.1": {
-            "targetAlias": "netcoreapp3.1",
+          "netstandard2.0": {
+            "targetAlias": "netstandard2.0",
             "projectReferences": {}
           }
         },
@@ -40,8 +40,16 @@
         }
       },
       "frameworks": {
-        "netcoreapp3.1": {
-          "targetAlias": "netcoreapp3.1",
+        "netstandard2.0": {
+          "targetAlias": "netstandard2.0",
+          "dependencies": {
+            "NETStandard.Library": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[2.0.3, )",
+              "autoReferenced": true
+            }
+          },
           "imports": [
             "net461",
             "net462",
@@ -52,11 +60,6 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
-          "frameworkReferences": {
-            "Microsoft.NETCore.App": {
-              "privateAssets": "all"
-            }
-          },
           "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\5.0.101\\RuntimeIdentifierGraph.json"
         }
       }

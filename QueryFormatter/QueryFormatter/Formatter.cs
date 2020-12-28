@@ -1,48 +1,52 @@
 ﻿using System;
-using System.Linq;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using System.Collections.Generic;
-
+using System.Linq;
+using QueryFormatter.Models;
 
 namespace QueryFormatter
 {
-    public class WriteLine
+
+    delegate void Operation(Action<string> oper);
+
+    /// <summary>
+    /// Обёртка над StringBuilder
+    /// для того, чтобы у него был с StreamWriter был общий void метод WriteLine
+    /// </summary>
+    public class StringStream
     {
-        public string line { get; set; }
-        public int intendSize { get; set; }
-        public bool isNewLine { get; set; }
-        public int wordId { get; set; }
+        public StringBuilder text { get; set; }
+
+        public StringStream()
+        {
+            text = new StringBuilder();
+        }
+
+        public void Writeline(string line)
+        {
+            text.AppendLine(line);
+        }
     }
 
-    public class Parenthese
+    public class Formatter
     {
-        public int left { get; set; }
-        public int right { get; set; }
-        public string repl_str { get; set; }
-        public int ids { get; set; }
-        public bool isProc { get; set; }
-        public List<Parenthese> innerPar { get; set; }
-        public List<string> innerWords { get; set; }
-    }
+        private List<string> specialWords = "select,from,where,by,and,order,group,to_char,to_date,to_number,rownum,nvl,coalesce,trim,lpad,rpad,or,in,max,min,case,when,then,else,end,not,exists,trunc,as,substr,is,null,sum,fetch,first,rows,only,add_months,month,year,extract,start,with,connect,level,round,decode,distinct,count,months_between,table,upper,lower,union,all,grouping,sets,last_day".Split(',').ToList();
+        private Dictionary<string, string> comments = new Dictionary<string, string>();
+        private Dictionary<int, string> words = new Dictionary<int, string>();
+        private List<Parenthese> parentheses = new List<Parenthese>();
+        private List<WriteWord> writeWords = new List<WriteWord>();
+        private StringComparison cmp = StringComparison.InvariantCultureIgnoreCase;
+        private Dictionary<string, string> singleQuotes = new Dictionary<string, string>();
+        private List<string> SQ = new List<string>();
+        private string sql_main = "";
 
-    class Program
-    {
-        static List<string> specialIntendWords = new List<string>();
-        static List<string> specialUnIntendWords = new List<string>();
-        static List<string> specialWords = new List<string>();
-        static Dictionary<string, string> comments = new Dictionary<string, string>();
-        static Dictionary<int, string> words = new Dictionary<int, string>();
-        static List<Parenthese> parentheses = new List<Parenthese>();
-        static List<WriteLine> lines = new List<WriteLine>();
-        static StringComparison cmp = StringComparison.InvariantCultureIgnoreCase;
-        static Dictionary<string, string> singleQuotes = new Dictionary<string, string>();
-        static List<string> SQ = new List<string>();
-
-
-        static string sql_main = "";
-
-        static void InlineCommentDelete(ref string line, ref bool isComment)
+        /// <summary>
+        /// Удаление комментариев
+        /// </summary>
+        /// <param name="line">Строка</param>
+        /// <param name="isComment">Признак комментария</param>
+        private void InlineCommentDelete(ref string line, ref bool isComment)
         {
             line = line.Trim();
             if (String.IsNullOrEmpty(line)) // пропускаем пустые строки после удаления комментариев
@@ -97,7 +101,13 @@ namespace QueryFormatter
             }
         }
 
-        static void InlineCommentHide(ref string line, ref bool isComment, ref string comment)
+        /// <summary>
+        /// Сокрытие комментарие
+        /// </summary>
+        /// <param name="line">СТрока</param>
+        /// <param name="isComment">Признак комментария</param>
+        /// <param name="comment">Комментария</param>
+        private void InlineCommentHide(ref string line, ref bool isComment, ref string comment)
         {
             string key = "tnemmoc" + comments.Count() + "comment";
             line = line.Trim();
@@ -113,7 +123,7 @@ namespace QueryFormatter
 
             if (isComment && multiCommentIndexEnd == -1) // если это строка мультистрочный комментарий и нет конца этого комментария, то пропускаем
             {
-                comment = comment + "/r/n" + line;
+                comment = comment + "\r\n" + line;
                 line = "";
                 return;
             }
@@ -134,7 +144,7 @@ namespace QueryFormatter
                 }
                 else
                 {
-
+                    comment = line.Substring(multiCommentIndexStart, line.Length - multiCommentIndexStart);
                     line = line.Substring(0, multiCommentIndexStart).Trim();
                     return;
                 }
@@ -143,7 +153,7 @@ namespace QueryFormatter
             if (multiCommentIndexEnd >= 0 && isComment)
             {
                 isComment = false;
-                comment = comment + "/r/n" + line.Substring(0, multiCommentIndexEnd);
+                comment = comment + "\r\n" + line.Substring(0, multiCommentIndexEnd + 2);
                 comments.Add(key, comment);
                 line = /*key + " " +*/ line.Substring(multiCommentIndexEnd + 2, line.Length - (multiCommentIndexEnd + 2));
                 InlineCommentHide(ref line, ref isComment, ref comment);
@@ -161,75 +171,81 @@ namespace QueryFormatter
             }
         }
 
-        static int Instr(string text, string substring, int appereance)
-        {
-            int x_start = text.IndexOf(substring);
-            if (appereance == 1)
-                return x_start;
-            int x_itter = appereance;
-            while (x_itter > 1)
-            {
-                x_start = text.IndexOf(substring, x_start + 1);
-                if (x_start < 0)
-                    return -1;
-                x_itter = x_itter - 1;
-            }
-
-            return x_start;
-        }
-
-
-        static void AddLine(int index, WriteLine line)
+        /// <summary>
+        /// Добавление 
+        /// </summary>
+        /// <param name="index"></param>
+        /// <param name="line"></param>
+        private void AddWord(int index, WriteWord word)
         {
             if (index < 0)
-                AddLineAtEnd(line);
+                AddWordAtEnd(word);
             else
-                AddLineAfter(index, line);
+                AddWordAfter(index, word);
         }
 
-
-        static void AddLineAtEnd(WriteLine line)
+        /// <summary>
+        /// Добавить слово в конец списка
+        /// </summary>
+        /// <param name="word">Слово</param>
+        private void AddWordAtEnd(WriteWord word)
         {
-            lines.Add(line);
+            writeWords.Add(word);
         }
 
-        static void AddLineAfter(int index, WriteLine line)
+        /// <summary>
+        /// Добавить слово в заданное место
+        /// </summary>
+        /// <param name="index">Индекс месторасположения</param>
+        /// <param name="word">Слово</param>
+        private void AddWordAfter(int index, WriteWord word)
         {
-            lines.Insert(index, line);
+            writeWords.Insert(index, word);
         }
 
-        static int CalcIntendSize(int lineIndex)
+        /// <summary>
+        /// Вычислить отступ для заданного слова
+        /// </summary>
+        /// <param name="wordIndex">Индекс слова</param>
+        /// <returns></returns>
+        private int CalcIntendSize(int wordIndex)
         {
-            List<WriteLine> lineList = new List<WriteLine>();
-            for(int i = lineIndex - 1; i > -1; i--)
+            List<WriteWord> wordList = new List<WriteWord>();
+            for (int i = wordIndex - 1; i > -1; i--)
             {
-                lineList.Add(lines[i]);
-                if (lines[i].isNewLine)
+                wordList.Add(writeWords[i]);
+                if (writeWords[i].isNewLine)
                     break;
             }
 
-            if (lineList.Count() == 0)
-                return lines[lineIndex].intendSize;
+            if (wordList.Count() == 0)
+                return writeWords[wordIndex].intendSize;
             else
             {
                 int itdSize = 0;
-                foreach(var v in lineList)
+                foreach (var v in wordList)
                 {
-                    if(v.line.StartsWith("etouqelgnis"))
+                    if (v.word.StartsWith("etouqelgnis"))
                     {
-                        itdSize = itdSize + ("".PadLeft(v.intendSize) + singleQuotes[v.line]).Length;
+                        itdSize = itdSize + ("".PadLeft(v.intendSize) + singleQuotes[v.word]).Length;
                     }
                     else
                     {
-                        itdSize = itdSize + ("".PadLeft(v.intendSize) + v.line).Length;
+                        itdSize = itdSize + ("".PadLeft(v.intendSize) + v.word).Length;
                     }
-                    
+
                 }
-                return itdSize + lines[lineIndex].intendSize;
+                return itdSize + writeWords[wordIndex].intendSize;
             }
         }
 
-        static int FindSingleQuoteEnd(string text, int start)
+        /// <summary>
+        /// Определяем конец одинарной кавычки
+        /// </summary>
+        /// <param name="text"></param>
+        /// <param name="start"></param>
+        /// <returns></returns>
+        private int FindSingleQuoteEnd(string text, int start)
         {
             int end = text.IndexOf("'", start + 1);
 
@@ -246,27 +262,33 @@ namespace QueryFormatter
             }
         }
 
-        static void Process(int startIndex, int endIndex, int lineIndex)
+        /// <summary>
+        /// Обработка слов
+        /// </summary>
+        /// <param name="startIndex">Индекс начала</param>
+        /// <param name="endIndex">Индекс конца</param>
+        /// <param name="WrWordIndex">Индекс слова для записи</param>
+        private void Process(int startIndex, int endIndex, int WrWordIndex)
         {
             int ids = 0;
             int insertIndex = -1;
             List<int> caseIds = new List<int>();
             int curCaseIds = -1;
             bool isWith = false;
-            if (lineIndex >= 0)
+            if (WrWordIndex >= 0)
             {
-                WriteLine tmpL = lines[lineIndex];
-                if (tmpL.isNewLine)
-                    ids = lines[lineIndex].intendSize;
+                WriteWord tmpW = writeWords[WrWordIndex];
+                if (tmpW.isNewLine)
+                    ids = writeWords[WrWordIndex].intendSize;
                 else
-                    ids = CalcIntendSize(lineIndex) +1; // Добавляем единицу из-за открывающей скобки
-                lines.RemoveAt(lineIndex);
-                insertIndex = lineIndex - 1;
-            }    
-            
+                    ids = CalcIntendSize(WrWordIndex) + 1; // Добавляем единицу из-за открывающей скобки
+                writeWords.RemoveAt(WrWordIndex);
+                insertIndex = WrWordIndex - 1;
+            }
+
             for (int i = startIndex; i < endIndex; i++)
             {
-                if (lineIndex >= 0)
+                if (WrWordIndex >= 0)
                     insertIndex = insertIndex + 1;
                 string prevWord = "";
                 string nextWord = "";
@@ -280,11 +302,11 @@ namespace QueryFormatter
 
                 if (curWord.Equals("(", cmp))
                 {
-                    if (lineIndex >= 0 && startIndex == i)
+                    if (WrWordIndex >= 0 && startIndex == i)
                     {
                         if (prevWord.Equals("from", cmp) || prevWord.Equals("where", cmp) || prevWord.Equals("as", cmp) || prevWord.Equals("select", cmp))
                         {
-                            AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
+                            AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
                             ids += 1;
                         }
                         else
@@ -293,25 +315,25 @@ namespace QueryFormatter
                                  || prevWord.Equals("else", cmp) || prevWord.Equals("when", cmp) || prevWord.Equals("then", cmp) || prevWord.Equals("=", cmp)
                                  || prevWord.Equals("and", cmp) || prevWord.Equals("join", cmp) || prevWord.Equals(">", cmp) || prevWord.Equals("<", cmp)
                                  || prevWord.Equals("group", cmp))
-                                AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 1, isNewLine = false });
+                                AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 1, isNewLine = false });
                             else
-                                AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 0, isNewLine = false });
+                                AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 0, isNewLine = false });
                         }
                     }
                     else
                     {
                         Parenthese par = parentheses.Where(p => p.left == i).First();
                         if (prevWord.Equals("from", cmp) || prevWord.Equals("where", cmp) || prevWord.Equals("as", cmp))
-                            AddLine(insertIndex, new WriteLine { line = par.repl_str, intendSize = ids, isNewLine = true });
+                            AddWord(insertIndex, new WriteWord { word = par.repl_str, intendSize = ids, isNewLine = true });
                         else if (prevWord.Equals("select", cmp))
-                            AddLine(insertIndex, new WriteLine { line = par.repl_str, intendSize = ids, isNewLine = true });
+                            AddWord(insertIndex, new WriteWord { word = par.repl_str, intendSize = ids, isNewLine = true });
                         else if (prevWord.Equals(",", cmp) || prevWord.Equals("in", cmp) || prevWord.Equals("exists", cmp) || prevWord.Equals("case", cmp)
                                  || prevWord.Equals("else", cmp) || prevWord.Equals("when", cmp) || prevWord.Equals("then", cmp) || prevWord.Equals("=", cmp)
                                  || prevWord.Equals("and", cmp) || prevWord.Equals("join", cmp) || prevWord.Equals(">", cmp) || prevWord.Equals("<", cmp)
                                  || prevWord.Equals("group", cmp))
-                            AddLine(insertIndex, new WriteLine { line = par.repl_str, intendSize = 1, isNewLine = false });
+                            AddWord(insertIndex, new WriteWord { word = par.repl_str, intendSize = 1, isNewLine = false });
                         else
-                            AddLine(insertIndex, new WriteLine { line = par.repl_str, intendSize = 0, isNewLine = false });
+                            AddWord(insertIndex, new WriteWord { word = par.repl_str, intendSize = 0, isNewLine = false });
                         i = par.right;
                     }
 
@@ -323,19 +345,27 @@ namespace QueryFormatter
                     int t = 1 + 1;
                 }
 
+                if (curWord.Equals("union", cmp))
+                {
+                    //isUnion = true;
+                    ids -= 2;
+                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
+                    continue;
+                }
+
                 if (curWord.Equals("with", cmp))
                 {
                     if (prevWord.Equals("start"))
                     {
-                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 1, isNewLine = false });
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 1, isNewLine = false });
                     }
                     else
                     {
-                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
                         ids += 2;
                         isWith = true;
                     }
-                    
+
                     continue;
                 }
 
@@ -346,65 +376,65 @@ namespace QueryFormatter
                         ids -= 2;
                         isWith = false;
                     }
-                        
-                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
+
+                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
                     ids += 2;
                     continue;
                 }
 
                 if (curWord.Equals("from", cmp))
                 {
-                    if (lineIndex >= 0 && (words[startIndex - 1].Equals("extract", cmp) || words[startIndex - 1].Equals("trim", cmp)))
-                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 1, isNewLine = false });
+                    if (WrWordIndex >= 0 && (words[startIndex - 1].Equals("extract", cmp) || words[startIndex - 1].Equals("trim", cmp)))
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 1, isNewLine = false });
                     else
-                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids - 2, isNewLine = true });
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids - 2, isNewLine = true });
                     continue;
                 }
 
-                if ((curWord.Equals("left", cmp) || curWord.Equals("right", cmp) || curWord.Equals("full", cmp) )
+                if ((curWord.Equals("left", cmp) || curWord.Equals("right", cmp) || curWord.Equals("full", cmp))
                     && (nextWord.Equals("outer", cmp) || nextWord.Equals("inner", cmp) || nextWord.Equals("join", cmp)))
                 {
-                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids - 2, isNewLine = true });
+                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids - 2, isNewLine = true });
                     continue;
                 }
 
                 if ((curWord.Equals("join", cmp))
                     && !(prevWord.Equals("outer", cmp) || prevWord.Equals("inner", cmp) || prevWord.Equals("right", cmp) || prevWord.Equals("left", cmp) || prevWord.Equals("full", cmp)))
                 {
-                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids - 2, isNewLine = true });
+                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids - 2, isNewLine = true });
                     continue;
                 }
 
                 if (curWord.Equals("where", cmp))
                 {
-                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids - 2, isNewLine = true });
+                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids - 2, isNewLine = true });
                     continue;
                 }
 
                 if (curWord.Equals("connect", cmp))
                 {
-                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids - 2, isNewLine = true });
+                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids - 2, isNewLine = true });
                     continue;
                 }
 
                 if (curWord.Equals("start", cmp))
                 {
-                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids - 2, isNewLine = true });
+                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids - 2, isNewLine = true });
                     continue;
                 }
 
                 if (curWord.Equals("case", cmp))
                 {
-                    if (lineIndex >= 0)
+                    if (WrWordIndex >= 0)
                     {
-                        if(prevWord.Equals("("))
+                        if (prevWord.Equals("("))
                         {
-                            AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 0, isNewLine = false });
+                            AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 0, isNewLine = false });
                             curCaseIds = CalcIntendSize(insertIndex);
                         }
                         else
                         {
-                            AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 1, isNewLine = false });
+                            AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 1, isNewLine = false });
                             curCaseIds = CalcIntendSize(insertIndex);
                         }
                     }
@@ -412,47 +442,47 @@ namespace QueryFormatter
                     {
                         if (prevWord.Equals("("))
                         {
-                            AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 0, isNewLine = false });
-                            curCaseIds = CalcIntendSize(lines.Count() - 1);
+                            AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 0, isNewLine = false });
+                            curCaseIds = CalcIntendSize(writeWords.Count() - 1);
                         }
                         else
                         {
-                            AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 1, isNewLine = false });
-                            curCaseIds = CalcIntendSize(lines.Count() - 1);
+                            AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 1, isNewLine = false });
+                            curCaseIds = CalcIntendSize(writeWords.Count() - 1);
                         }
                     }
-                    
+
                     caseIds.Add(curCaseIds);
                     continue;
                 }
 
                 if (curWord.Equals("when", cmp))
                 {
-                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = curCaseIds + 2, isNewLine = true });
+                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = curCaseIds + 2, isNewLine = true });
                     continue;
                 }
 
                 if (curWord.Equals("then", cmp))
                 {
-                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = curCaseIds + 4, isNewLine = true });
+                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = curCaseIds + 4, isNewLine = true });
                     continue;
                 }
 
                 if (curWord.Equals("else", cmp))
                 {
-                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = curCaseIds + 2, isNewLine = true });
+                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = curCaseIds + 2, isNewLine = true });
                     continue;
                 }
 
                 if (prevWord.Equals("else", cmp))
                 {
-                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = curCaseIds + 4, isNewLine = true });
+                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = curCaseIds + 4, isNewLine = true });
                     continue;
                 }
 
                 if (curWord.Equals("end", cmp))
                 {
-                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = curCaseIds, isNewLine = true });
+                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = curCaseIds, isNewLine = true });
                     caseIds.RemoveAt(caseIds.Count() - 1);
                     if (caseIds.Count() > 0)
                         curCaseIds = caseIds.Last();
@@ -464,30 +494,30 @@ namespace QueryFormatter
                 if (curWord.Equals("group", cmp))
                 {
                     if (prevWord.Equals("within", cmp))
-                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 1, isNewLine = false });
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 1, isNewLine = false });
                     else
-                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids - 2, isNewLine = true });
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids - 2, isNewLine = true });
                     continue;
                 }
 
                 if (curWord.Equals("order", cmp))
                 {
-                    if (lineIndex >= 0 && (words[startIndex - 1].Equals("group", cmp)))
-                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 0, isNewLine = false });
+                    if (WrWordIndex >= 0 && (words[startIndex - 1].Equals("group", cmp)))
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 0, isNewLine = false });
                     else
-                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids - 2, isNewLine = true });
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids - 2, isNewLine = true });
                     continue;
                 }
 
-                if (lineIndex >= 0 && (words[startIndex - 1].Equals("extract", cmp) || words[startIndex - 1].Equals("trim", cmp)))
+                if (WrWordIndex >= 0 && (words[startIndex - 1].Equals("extract", cmp) || words[startIndex - 1].Equals("trim", cmp)))
                 {
-                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 1, isNewLine = false });
+                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 1, isNewLine = false });
                     continue;
                 }
 
                 if (curWord.Equals("by", cmp))
                 {
-                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 1, isNewLine = false });
+                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 1, isNewLine = false });
                     ids += 2;
                     continue;
                 }
@@ -495,93 +525,93 @@ namespace QueryFormatter
                 if (curWord.Equals("and", cmp))
                 {
                     if (curCaseIds >= 0)
-                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = curCaseIds + 7, isNewLine = true });
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = curCaseIds + 7, isNewLine = true });
                     else
-                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
                     continue;
                 }
 
                 if (curWord.Equals("or", cmp))
                 {
-                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
-                    continue;
-                }
-
-                if (lineIndex < 0 && curWord.Equals(","))
-                {
-                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
-                    continue;
-                }
-
-                if (lineIndex > 0 && curWord.Equals(","))
-                {
-                    if (words[startIndex + 1].Equals("select", cmp))
-                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
+                    if (curCaseIds >= 0)
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = curCaseIds + 7, isNewLine = true });
                     else
-                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 0, isNewLine = false });
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
+                    continue;
+                }
+
+                if (WrWordIndex < 0 && curWord.Equals(","))
+                {
+                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
+                    continue;
+                }
+
+                if (WrWordIndex > 0 && curWord.Equals(","))
+                {
+                    if (words[startIndex + 1].Equals("select", cmp) || words[startIndex - 1].Equals("by", cmp))
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
+                    else
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 0, isNewLine = false });
                     continue;
                 }
 
                 if (prevWord.Equals("on", cmp))
                 {
-                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
+                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
                     continue;
                 }
 
                 if (prevWord.Equals("select", cmp) || prevWord.Equals("from", cmp) || prevWord.Equals("by", cmp) || prevWord.Equals("where", cmp) || prevWord.Equals("with", cmp))
                 {
-                    if (lineIndex >= 0 && (words[startIndex - 1].Equals("extract", cmp) || words[startIndex - 1].Equals("trim", cmp)))
-                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 1, isNewLine = false });
+                    if (WrWordIndex >= 0 && (words[startIndex - 1].Equals("extract", cmp) || words[startIndex - 1].Equals("trim", cmp)))
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 1, isNewLine = false });
                     else
-                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
                     continue;
                 }
-                else if (lineIndex >= 0 && prevWord.Equals("("))
+                else if (WrWordIndex >= 0 && prevWord.Equals("("))
                 {
                     if (words[startIndex + 1].Equals("select", cmp) && words[startIndex - 1].Equals("where", cmp))
                     {
                         ids += 1;
-                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = ids, isNewLine = true });
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
                     }
                     else
-                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 0, isNewLine = false });
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 0, isNewLine = false });
                     continue;
                 }
-                else if (lineIndex >= 0 && curWord.Equals(")", cmp))
+                else if (WrWordIndex >= 0 && curWord.Equals(")", cmp))
                 {
                     if (words[startIndex - 1].Equals("from", cmp) || words[startIndex - 1].Equals("as", cmp) || words[startIndex - 1].Equals("select", cmp))
                     {
-                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = lines[startIndex].intendSize, isNewLine = true });
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = writeWords[startIndex].intendSize, isNewLine = true });
                     }
                     else if (words[startIndex + 1].Equals("select", cmp)
                         && !(words[startIndex - 1].Equals("from", cmp) || words[startIndex - 1].Equals("where", cmp) || words[startIndex - 1].Equals("select", cmp)))
                     {
-                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = CalcIntendSize(startIndex), isNewLine = true });
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = CalcIntendSize(startIndex), isNewLine = true });
                     }
                     else
                     {
-                        AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 0, isNewLine = false });
+                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 0, isNewLine = false });
                     }
                     continue;
                 }
                 else
-                    AddLine(insertIndex, new WriteLine { line = curWord, intendSize = 1, isNewLine = false });
+                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 1, isNewLine = false });
             }
         }
 
-        static void Main(string[] args)
+        /// <summary>
+        /// Получить данные из файла
+        /// </summary>
+        /// <param name="sqlInPath">Путь к файлу</param>
+        private void GetDataFromFile(string sqlInPath)
         {
-            string pathIn = @".\SQL\input.sql";
-            string pathOut = @".\SQL\output.sql";
-            string commentsPathOut = @".\SQL\comments.sql";
             bool isComment = false;
             string comment = "";
-            specialIntendWords.Add("select");
-            specialIntendWords.Add("from");
-            specialIntendWords.Add("where");
-            specialIntendWords.Add("by");
 
-            using (StreamReader sr = new StreamReader(pathIn, System.Text.Encoding.Default))
+            using (StreamReader sr = new StreamReader(sqlInPath, Encoding.Default))
             {
                 string line;
                 while ((line = sr.ReadLine()) != null)
@@ -598,9 +628,41 @@ namespace QueryFormatter
 
                     sql_main = sql_main + line + " ";
                 }
-                
             }
+        }
 
+        /// <summary>
+        /// Получить данные из строки
+        /// </summary>
+        /// <param name="sqlIn">Строка с запросом</param>
+        private void GetDataFromString(string sqlIn)
+        {
+            bool isComment = false;
+            string comment = "";
+            string[] lines = sqlIn.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (string l in lines)
+            {
+                string line;
+                line = l.Trim();
+                if (String.IsNullOrEmpty(line)) // пропускаем пустые строки
+                    continue;
+                //InlineCommentDelete(ref line, ref isComment);
+                InlineCommentHide(ref line, ref isComment, ref comment);
+
+                line = line.Trim();
+                if (String.IsNullOrEmpty(line)) // пропускаем пустые строки после удаления комментариев
+                    continue;
+
+                sql_main = sql_main + line + " ";
+            }
+        }
+
+        /// <summary>
+        /// Разделить строку на слова и обработать
+        /// </summary>
+        private void ParseData()
+        {
             int sinqleQuoIndex = sql_main.IndexOf("'");
 
             while (sinqleQuoIndex >= 0)
@@ -633,8 +695,8 @@ namespace QueryFormatter
             sql_main = sql_main.Replace("=", " = ");
             sql_main = sql_main.Trim();
 
-            foreach (string sw in specialIntendWords)
-                sql_main = sql_main.Replace(sw, sw, cmp);
+            /*foreach (string sw in specialWords)
+                sql_main = sql_main.Replace(sw, sw, cmp);*/
 
             for (int i = 0; i < 11; i++)
             {
@@ -644,7 +706,14 @@ namespace QueryFormatter
             string[] tempWords = sql_main.Split(' ');
 
             for (int i = 0; i < tempWords.Count(); i++)
-                words.Add(i, tempWords[i]);
+            {
+                var tmpW = specialWords.Where(x => x.Equals(tempWords[i], cmp));
+                if (tmpW.Count() > 0)
+                    words.Add(i, tmpW.First());
+                else
+                    words.Add(i, tempWords[i]);
+            }
+
 
             // ищем все открывающие скобки
             int[] lpList =
@@ -705,10 +774,10 @@ namespace QueryFormatter
             Console.WriteLine("{0}:{1}:{2}", rez.Minutes, rez.Seconds, rez.Milliseconds);
             Console.ReadLine();*/
 
-            int tmpCount = parentheses.Count();
-
             // ненужная часть
-            /*for (int i = 0; i < tmpCount; i++)
+
+            /*int tmpCount = parentheses.Count();
+            for (int i = 0; i < tmpCount; i++)
             {
                 Parenthese tmp = parentheses[i];
                 tmp.innerPar = parentheses.Where(x => x.left > tmp.left && x.right < tmp.right
@@ -717,79 +786,183 @@ namespace QueryFormatter
                     && t.left > tmp.left && t.left < x.left).Count() == 0
                 ).ToList();
             }*/
+        }
 
+        /// <summary>
+        /// Форматирование слов
+        /// </summary>
+        private void ProcessData()
+        {
             Process(0, words.Count(), -1);
 
-            int index = lines.FindIndex(l => l.line.StartsWith("esehtnerap"));
+            int index = writeWords.FindIndex(l => l.word.StartsWith("esehtnerap"));
             int iterCount = 0;
 
 
             while (index >= 0)
             {
-                WriteLine tmpL = lines[index];
-                Parenthese tmpP = parentheses.Where(p => p.repl_str.Equals(tmpL.line)).First();
+                WriteWord tmpW = writeWords[index];
+                Parenthese tmpP = parentheses.Where(p => p.repl_str.Equals(tmpW.word)).First();
                 Process(tmpP.left, tmpP.right + 1, index);
-                index = lines.FindIndex(l => l.line.StartsWith("esehtnerap"));
+                index = writeWords.FindIndex(l => l.word.StartsWith("esehtnerap"));
                 iterCount += 1;
                 /*if (iterCount >= 2)
                     break;*/
             }
 
-            foreach(var sq in singleQuotes)
+            foreach (var sq in singleQuotes)
             {
-                List<WriteLine> tmpLineList = lines.Where(l => l.line.Equals(sq.Key, cmp)).ToList();
+                List<WriteWord> tmpLineList = writeWords.Where(l => l.word.Equals(sq.Key, cmp)).ToList();
                 int lineCount = tmpLineList.Count();
 
-                for(int i = 0; i < lineCount; i++)
+                for (int i = 0; i < lineCount; i++)
                 {
-                    WriteLine tmp = tmpLineList[i];
-                    tmp.line = sq.Value;
-                }
-            }
-
-            using (StreamWriter w = new StreamWriter(pathOut, false, System.Text.Encoding.Default))
-            {
-                /*foreach (var t in parentheses)
-                {
-                    string line = t.left + "-" + t.right;
-                    w.WriteLine(line);
-                }*/
-
-                string line = "";
-                WriteLine nextLine = new WriteLine();
-                WriteLine curLine;
-                for (int l = 0; l < lines.Count(); l++)
-                {
-                    curLine = lines[l];
-                    if (l != lines.Count() - 1)
-                        nextLine = lines[l + 1];
-                    if (l == 0)
-                        line = "".PadLeft(curLine.intendSize) + curLine.line;
-                    else
-                        line = line + "".PadLeft(curLine.intendSize) + curLine.line;
-                    if (nextLine.isNewLine || l == lines.Count() - 1)
-                    {
-                        w.WriteLine(line);
-                        line = "";
-                    }
-                }
-
-
-                /*foreach (var t in words)
-                {
-                    string line = t.Key + "." + t.Value;
-                    w.WriteLine(line);
-                }*/
-            }
-
-            using (StreamWriter w = new StreamWriter(commentsPathOut, false, System.Text.Encoding.Default))
-            {
-                foreach (var t in comments)
-                {
-                    string line = t.Value;
-                    w.WriteLine(line);
+                    WriteWord tmp = tmpLineList[i];
+                    tmp.word = sq.Value;
                 }
             }
         }
+
+        /// <summary>
+        /// Сохранение результата
+        /// </summary>
+        /// <param name="writer">Действие для записи</param>
+        private void SaveSQL(Action<string> writer)
+        {
+
+            /*foreach (var t in parentheses)
+            {
+                string line = t.left + "-" + t.right;
+                writer(line);
+            }*/
+
+            string line = "";
+            WriteWord nextWord = new WriteWord();
+            WriteWord curWord;
+            for (int l = 0; l < writeWords.Count(); l++)
+            {
+                curWord = writeWords[l];
+                if (l != writeWords.Count() - 1)
+                    nextWord = writeWords[l + 1];
+                if (l == 0)
+                    line = "".PadLeft(curWord.intendSize) + curWord.word;
+                else
+                    line = line + "".PadLeft(curWord.intendSize) + curWord.word;
+                if (nextWord.isNewLine || l == writeWords.Count() - 1)
+                {
+                    writer(line);
+                    line = "";
+                }
+            }
+
+            /*foreach (var t in words)
+            {
+                string line = t.Key + "." + t.Value;
+                writer(line);
+            }*/
+        }
+
+
+        /// <summary>
+        /// Сохранение комментариев
+        /// </summary>
+        /// <param name="writer">Действие для записи</param>
+        private void SaveComments(Action<string> writer)
+        {
+            foreach (var t in comments)
+            {
+                string line = t.Value;
+                writer(line);
+            }
+        }
+
+        /// <summary>
+        /// Сохранение в файл
+        /// </summary>
+        /// <param name="sqlOutPath">Путь к файлу</param>
+        /// <param name="oper">Функция для записи</param>
+        private void SaveToFile(string sqlOutPath, Operation oper)
+        {
+            using (StreamWriter stream = new StreamWriter(sqlOutPath, false, Encoding.Default))
+            {
+                Action<string> writer = stream.WriteLine;
+                oper(writer);
+            }
+        }
+
+        /// <summary>
+        /// Сохранение в строку
+        /// </summary>
+        /// <param name="oper"></param>
+        /// <returns>Строка с результатом</returns>
+        private string SaveToString(Operation oper)
+        {
+            StringStream ss = new StringStream();
+            Action<string> writer = ss.Writeline;
+            oper(writer);
+            return ss.text.ToString();
+        }
+
+        /// <summary>
+        /// Форматирование запроса из файла
+        /// </summary>
+        /// <param name="sqlInPath">Путь к запросу</param>
+        /// <param name="sqlOutPath">Путь к результату</param>
+        /// <param name="commentsPath">Путь к комментариям</param>
+        /// <param name="error">Ошибка</param>
+        public bool FormateFromFile(string sqlInPath, string sqlOutPath, string commentsPath, out Exception error)
+        {
+            error = null;
+            try
+            {
+                GetDataFromFile(sqlInPath);
+                ParseData();
+                ProcessData();
+                Operation oper = SaveSQL;
+                SaveToFile(sqlOutPath, SaveSQL);
+                oper = SaveComments;
+                SaveToFile(commentsPath, oper);
+            }
+            catch (Exception ex)
+            {
+                error = ex;
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="inputSql">Текст sql-запроса</param>
+        /// <param name="resultSql">Текст обработанного sql-запроса</param>
+        /// <param name="comments">Текст комментарие</param>
+        /// <param name="error">Ошибка</param>
+        /// <returns></returns>
+        public bool FormateFromString(string inputSql, out string resultSql, out string comments, out Exception error)
+        {
+            resultSql = string.Empty;
+            comments = string.Empty;
+            error = null;
+
+            try
+            {
+                GetDataFromString(inputSql);
+                ParseData();
+                ProcessData();
+                Operation oper = SaveSQL;
+                resultSql = SaveToString(oper);
+                oper = SaveComments;
+                comments = SaveToString(oper);
+            }
+            catch (Exception ex)
+            {
+                error = ex;
+                return false;
+            }
+            return true;
+
+        }
     }
+
 }
