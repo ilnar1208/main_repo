@@ -31,15 +31,33 @@ namespace QueryFormatter
 
     public class Formatter
     {
-        private List<string> specialWords = "select,from,where,by,and,order,group,to_char,to_date,to_number,rownum,nvl,coalesce,trim,lpad,rpad,or,in,max,min,case,when,then,else,end,not,exists,trunc,as,substr,is,null,sum,fetch,first,rows,only,add_months,month,year,extract,start,with,connect,level,round,decode,distinct,count,months_between,table,upper,lower,union,all,grouping,sets,last_day".Split(',').ToList();
-        private Dictionary<string, string> comments = new Dictionary<string, string>();
-        private Dictionary<int, string> words = new Dictionary<int, string>();
-        private List<Parenthese> parentheses = new List<Parenthese>();
-        private List<WriteWord> writeWords = new List<WriteWord>();
-        private StringComparison cmp = StringComparison.InvariantCultureIgnoreCase;
-        private Dictionary<string, string> singleQuotes = new Dictionary<string, string>();
-        private List<string> SQ = new List<string>();
-        private string sql_main = "";
+        static List<string> specialWords = "select,from,where,by,and,order,group,to_char,to_date,to_number,rownum,nvl,coalesce,trim,lpad,rpad,or,in,max,min,case,when,then,else,end,not,exists,trunc,as,substr,is,null,sum,fetch,first,rows,only,add_months,month,year,extract,start,with,connect,level,round,decode,distinct,count,months_between,table,upper,lower,union,all,grouping,sets,last_day,over,partition,having,cube,rollup".Split(',').ToList();
+        static List<string> parNextLineWords = "from,where,as,select,sets".Split(',').ToList();
+        static List<string> parGroupWords = "cube,rollup,grouping".Split(',').ToList();
+        static List<string> parSpaceWords = ",;in;exists;case;else;when;then;=;and;join;>;<;group".Split(';').ToList();
+        static List<string> fromFunctions = "trim,extract".Split(',').ToList();
+        static List<string> joinTypes = "outer,inner,right,left,full,cross".Split(',').ToList();
+        static List<string> prevWords = "select,from,by,where,with,sets".Split(',').ToList();
+        static StringComparison cmp = StringComparison.InvariantCultureIgnoreCase;
+        private Dictionary<string, string> comments;
+        private Dictionary<int, string> words;
+        private List<Parenthese> parentheses;
+        private List<WriteWord> writeWords;
+        private Dictionary<string, string> singleQuotes;
+        private List<string> SQ;
+        private string sql_main;
+
+        private void CleanData()
+        {
+            comments = new Dictionary<string, string>();
+            words = new Dictionary<int, string>();
+            parentheses = new List<Parenthese>();
+            writeWords = new List<WriteWord>();
+            singleQuotes = new Dictionary<string, string>();
+            SQ = new List<string>();
+            sql_main = "";
+        }
+
 
         /// <summary>
         /// Удаление комментариев
@@ -142,6 +160,7 @@ namespace QueryFormatter
                     InlineCommentHide(ref line, ref isComment, ref comment);
                     return;
                 }
+                // если конца мультистрочного комментария в этой строке нет, то вырезаем и сохраняем его 
                 else
                 {
                     comment = line.Substring(multiCommentIndexStart, line.Length - multiCommentIndexStart);
@@ -150,6 +169,7 @@ namespace QueryFormatter
                 }
             }
 
+            // проверяем, что нашли конец мультистрочного комментария
             if (multiCommentIndexEnd >= 0 && isComment)
             {
                 isComment = false;
@@ -172,7 +192,7 @@ namespace QueryFormatter
         }
 
         /// <summary>
-        /// Добавление 
+        /// Добавление слова
         /// </summary>
         /// <param name="index"></param>
         /// <param name="line"></param>
@@ -211,6 +231,7 @@ namespace QueryFormatter
         private int CalcIntendSize(int wordIndex)
         {
             List<WriteWord> wordList = new List<WriteWord>();
+            // ищем все слова до начала строки
             for (int i = wordIndex - 1; i > -1; i--)
             {
                 wordList.Add(writeWords[i]);
@@ -218,13 +239,16 @@ namespace QueryFormatter
                     break;
             }
 
+            // если слов не нашли, то берём отступ у слова для которого вычисляли отступ
             if (wordList.Count() == 0)
                 return writeWords[wordIndex].intendSize;
             else
             {
                 int itdSize = 0;
+                // собираем все слова в этой строке и вычисляем суммарный отступ
                 foreach (var v in wordList)
                 {
+                    // если есть преобразование одинарных кавычек, то берём истинную длину слова
                     if (v.word.StartsWith("etouqelgnis"))
                     {
                         itdSize = itdSize + ("".PadLeft(v.intendSize) + singleQuotes[v.word]).Length;
@@ -270,11 +294,19 @@ namespace QueryFormatter
         /// <param name="WrWordIndex">Индекс слова для записи</param>
         private void Process(int startIndex, int endIndex, int WrWordIndex)
         {
-            int ids = 0;
-            int insertIndex = -1;
-            List<int> caseIds = new List<int>();
-            int curCaseIds = -1;
-            bool isWith = false;
+            int ids = 0; // размер отступа
+            int insertIndex = -1; // индекс вставки текущего слова
+            List<int> caseIds = new List<int>(); // отступы для вложенных case
+            int curCaseIds = -1; // текуший отступ для case
+            bool isWith = false; // признак того, что запрос вынесен в with
+            string prevWordSt = ""; // предыдущее от startIndex слово
+            string nextWordSt = ""; // следующее от startIndex слово
+
+            if (startIndex != 0)
+                prevWordSt = words[startIndex - 1];
+            if (startIndex != words.Count() - 1)
+                nextWordSt = words[startIndex + 1];
+
             if (WrWordIndex >= 0)
             {
                 WriteWord tmpW = writeWords[WrWordIndex];
@@ -304,17 +336,14 @@ namespace QueryFormatter
                 {
                     if (WrWordIndex >= 0 && startIndex == i)
                     {
-                        if (prevWord.Equals("from", cmp) || prevWord.Equals("where", cmp) || prevWord.Equals("as", cmp) || prevWord.Equals("select", cmp))
+                        if (parNextLineWords.Where(x => x.Equals(prevWord, cmp)).Count() > 0)
                         {
                             AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
                             ids += 1;
                         }
                         else
                         {
-                            if (prevWord.Equals(",", cmp) || prevWord.Equals("in", cmp) || prevWord.Equals("exists", cmp) || prevWord.Equals("case", cmp)
-                                 || prevWord.Equals("else", cmp) || prevWord.Equals("when", cmp) || prevWord.Equals("then", cmp) || prevWord.Equals("=", cmp)
-                                 || prevWord.Equals("and", cmp) || prevWord.Equals("join", cmp) || prevWord.Equals(">", cmp) || prevWord.Equals("<", cmp)
-                                 || prevWord.Equals("group", cmp))
+                            if (parSpaceWords.Where(x => x.Equals(prevWord, cmp)).Count() > 0)
                                 AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 1, isNewLine = false });
                             else
                                 AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 0, isNewLine = false });
@@ -323,23 +352,22 @@ namespace QueryFormatter
                     else
                     {
                         Parenthese par = parentheses.Where(p => p.left == i).First();
-                        if (prevWord.Equals("from", cmp) || prevWord.Equals("where", cmp) || prevWord.Equals("as", cmp))
+                        if (parNextLineWords.Where(x => x.Equals(prevWord, cmp)).Count() > 0)
                             AddWord(insertIndex, new WriteWord { word = par.repl_str, intendSize = ids, isNewLine = true });
-                        else if (prevWord.Equals("select", cmp))
-                            AddWord(insertIndex, new WriteWord { word = par.repl_str, intendSize = ids, isNewLine = true });
-                        else if (prevWord.Equals(",", cmp) || prevWord.Equals("in", cmp) || prevWord.Equals("exists", cmp) || prevWord.Equals("case", cmp)
-                                 || prevWord.Equals("else", cmp) || prevWord.Equals("when", cmp) || prevWord.Equals("then", cmp) || prevWord.Equals("=", cmp)
-                                 || prevWord.Equals("and", cmp) || prevWord.Equals("join", cmp) || prevWord.Equals(">", cmp) || prevWord.Equals("<", cmp)
-                                 || prevWord.Equals("group", cmp))
-                            AddWord(insertIndex, new WriteWord { word = par.repl_str, intendSize = 1, isNewLine = false });
                         else
-                            AddWord(insertIndex, new WriteWord { word = par.repl_str, intendSize = 0, isNewLine = false });
+                        {
+                            if (parSpaceWords.Where(x => x.Equals(prevWord, cmp)).Count() > 0)
+                                AddWord(insertIndex, new WriteWord { word = par.repl_str, intendSize = 1, isNewLine = false });
+                            else
+                                AddWord(insertIndex, new WriteWord { word = par.repl_str, intendSize = 0, isNewLine = false });
+                        }
                         i = par.right;
                     }
 
                     continue;
                 }
 
+                // комментарий. Пока пропускаем
                 if (curWord.StartsWith("tnemmoc"))
                 {
                     int t = 1 + 1;
@@ -347,7 +375,6 @@ namespace QueryFormatter
 
                 if (curWord.Equals("union", cmp))
                 {
-                    //isUnion = true;
                     ids -= 2;
                     AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
                     continue;
@@ -384,22 +411,21 @@ namespace QueryFormatter
 
                 if (curWord.Equals("from", cmp))
                 {
-                    if (WrWordIndex >= 0 && (words[startIndex - 1].Equals("extract", cmp) || words[startIndex - 1].Equals("trim", cmp)))
+                    if (WrWordIndex >= 0 && fromFunctions.Where(x => x.Equals(prevWordSt, cmp)).Count() > 0 )
                         AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 1, isNewLine = false });
                     else
                         AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids - 2, isNewLine = true });
                     continue;
                 }
 
-                if ((curWord.Equals("left", cmp) || curWord.Equals("right", cmp) || curWord.Equals("full", cmp))
-                    && (nextWord.Equals("outer", cmp) || nextWord.Equals("inner", cmp) || nextWord.Equals("join", cmp)))
+                if (joinTypes.Where(x => x.Equals(curWord, cmp)).Count() > 0
+                    && joinTypes.Where(x => x.Equals(prevWord, cmp)).Count() == 0)
                 {
                     AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids - 2, isNewLine = true });
                     continue;
                 }
 
-                if ((curWord.Equals("join", cmp))
-                    && !(prevWord.Equals("outer", cmp) || prevWord.Equals("inner", cmp) || prevWord.Equals("right", cmp) || prevWord.Equals("left", cmp) || prevWord.Equals("full", cmp)))
+                if (curWord.Equals("join", cmp) && joinTypes.Where(x => x.Equals(prevWord, cmp)).Count() == 0)
                 {
                     AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids - 2, isNewLine = true });
                     continue;
@@ -456,25 +482,13 @@ namespace QueryFormatter
                     continue;
                 }
 
-                if (curWord.Equals("when", cmp))
+                if (curWord.Equals("when", cmp) || curWord.Equals("else", cmp))
                 {
                     AddWord(insertIndex, new WriteWord { word = curWord, intendSize = curCaseIds + 2, isNewLine = true });
                     continue;
                 }
 
-                if (curWord.Equals("then", cmp))
-                {
-                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = curCaseIds + 4, isNewLine = true });
-                    continue;
-                }
-
-                if (curWord.Equals("else", cmp))
-                {
-                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = curCaseIds + 2, isNewLine = true });
-                    continue;
-                }
-
-                if (prevWord.Equals("else", cmp))
+                if (curWord.Equals("then", cmp) || prevWord.Equals("else", cmp))
                 {
                     AddWord(insertIndex, new WriteWord { word = curWord, intendSize = curCaseIds + 4, isNewLine = true });
                     continue;
@@ -502,27 +516,26 @@ namespace QueryFormatter
 
                 if (curWord.Equals("order", cmp))
                 {
-                    if (WrWordIndex >= 0 && (words[startIndex - 1].Equals("group", cmp)))
+                    if (WrWordIndex >= 0 && (prevWordSt.Equals("group", cmp)))
                         AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 0, isNewLine = false });
                     else
                         AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids - 2, isNewLine = true });
                     continue;
                 }
 
-                if (WrWordIndex >= 0 && (words[startIndex - 1].Equals("extract", cmp) || words[startIndex - 1].Equals("trim", cmp)))
+                if (WrWordIndex >= 0 && fromFunctions.Where(x => x.Equals(prevWordSt, cmp)).Count() > 0)
                 {
                     AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 1, isNewLine = false });
                     continue;
                 }
 
-                if (curWord.Equals("by", cmp))
+                if (curWord.Equals("by", cmp) || curWord.Equals("sets", cmp))
                 {
                     AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 1, isNewLine = false });
-                    ids += 2;
                     continue;
                 }
 
-                if (curWord.Equals("and", cmp))
+                if (curWord.Equals("and", cmp) || curWord.Equals("or", cmp))
                 {
                     if (curCaseIds >= 0)
                         AddWord(insertIndex, new WriteWord { word = curWord, intendSize = curCaseIds + 7, isNewLine = true });
@@ -531,28 +544,23 @@ namespace QueryFormatter
                     continue;
                 }
 
-                if (curWord.Equals("or", cmp))
+                if (curWord.Equals(","))
                 {
-                    if (curCaseIds >= 0)
-                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = curCaseIds + 7, isNewLine = true });
-                    else
+                    if (WrWordIndex < 0)
+                    {
                         AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
-                    continue;
-                }
+                        continue;
+                    }
 
-                if (WrWordIndex < 0 && curWord.Equals(","))
-                {
-                    AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
-                    continue;
-                }
+                    if (WrWordIndex > 0)
+                    {
+                        if (nextWordSt.Equals("select", cmp) || prevWordSt.Equals("by", cmp))
+                            AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
+                        else
+                            AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 0, isNewLine = false });
+                        continue;
+                    }
 
-                if (WrWordIndex > 0 && curWord.Equals(","))
-                {
-                    if (words[startIndex + 1].Equals("select", cmp) || words[startIndex - 1].Equals("by", cmp))
-                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
-                    else
-                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 0, isNewLine = false });
-                    continue;
                 }
 
                 if (prevWord.Equals("on", cmp))
@@ -561,17 +569,22 @@ namespace QueryFormatter
                     continue;
                 }
 
-                if (prevWord.Equals("select", cmp) || prevWord.Equals("from", cmp) || prevWord.Equals("by", cmp) || prevWord.Equals("where", cmp) || prevWord.Equals("with", cmp))
+                if (prevWords.Where(x => x.Equals(prevWord, cmp)).Count() > 0)
                 {
-                    if (WrWordIndex >= 0 && (words[startIndex - 1].Equals("extract", cmp) || words[startIndex - 1].Equals("trim", cmp)))
+                    if (WrWordIndex >= 0 && fromFunctions.Where(x => x.Equals(prevWordSt, cmp)).Count() > 0)
                         AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 1, isNewLine = false });
                     else
-                        AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
+                    {
+                        if(prevWord.Equals("by", cmp) && parGroupWords.Where(x => x.Equals(curWord, cmp)).Count() > 0)
+                            AddWord(insertIndex, new WriteWord { word = curWord, intendSize = 1, isNewLine = false });
+                        else
+                            AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
+                    }
                     continue;
                 }
                 else if (WrWordIndex >= 0 && prevWord.Equals("("))
                 {
-                    if (words[startIndex + 1].Equals("select", cmp) && words[startIndex - 1].Equals("where", cmp))
+                    if (nextWordSt.Equals("select", cmp) && prevWordSt.Equals("where", cmp))
                     {
                         ids += 1;
                         AddWord(insertIndex, new WriteWord { word = curWord, intendSize = ids, isNewLine = true });
@@ -582,12 +595,12 @@ namespace QueryFormatter
                 }
                 else if (WrWordIndex >= 0 && curWord.Equals(")", cmp))
                 {
-                    if (words[startIndex - 1].Equals("from", cmp) || words[startIndex - 1].Equals("as", cmp) || words[startIndex - 1].Equals("select", cmp))
+                    if (prevWordSt.Equals("from", cmp) || prevWordSt.Equals("as", cmp) || prevWordSt.Equals("select", cmp))
                     {
                         AddWord(insertIndex, new WriteWord { word = curWord, intendSize = writeWords[startIndex].intendSize, isNewLine = true });
                     }
-                    else if (words[startIndex + 1].Equals("select", cmp)
-                        && !(words[startIndex - 1].Equals("from", cmp) || words[startIndex - 1].Equals("where", cmp) || words[startIndex - 1].Equals("select", cmp)))
+                    else if (nextWordSt.Equals("select", cmp)
+                        && !(prevWordSt.Equals("from", cmp) || prevWordSt.Equals("where", cmp) || prevWordSt.Equals("select", cmp)))
                     {
                         AddWord(insertIndex, new WriteWord { word = curWord, intendSize = CalcIntendSize(startIndex), isNewLine = true });
                     }
@@ -798,7 +811,6 @@ namespace QueryFormatter
             int index = writeWords.FindIndex(l => l.word.StartsWith("esehtnerap"));
             int iterCount = 0;
 
-
             while (index >= 0)
             {
                 WriteWord tmpW = writeWords[index];
@@ -806,8 +818,8 @@ namespace QueryFormatter
                 Process(tmpP.left, tmpP.right + 1, index);
                 index = writeWords.FindIndex(l => l.word.StartsWith("esehtnerap"));
                 iterCount += 1;
-                /*if (iterCount >= 2)
-                    break;*/
+                if (iterCount >= 549)
+                    break;
             }
 
             foreach (var sq in singleQuotes)
@@ -915,6 +927,7 @@ namespace QueryFormatter
             error = null;
             try
             {
+                CleanData();
                 GetDataFromFile(sqlInPath);
                 ParseData();
                 ProcessData();
@@ -947,6 +960,7 @@ namespace QueryFormatter
 
             try
             {
+                CleanData();
                 GetDataFromString(inputSql);
                 ParseData();
                 ProcessData();
