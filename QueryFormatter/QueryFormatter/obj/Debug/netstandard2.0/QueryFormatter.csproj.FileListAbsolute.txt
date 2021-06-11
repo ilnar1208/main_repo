@@ -1,9 +1,0 @@
-D:\git\QueryFormatter\Software\.Net\QueryFormatter\bin\Debug\netstandard2.0\QueryFormatter.deps.json
-D:\git\QueryFormatter\Software\.Net\QueryFormatter\bin\Debug\netstandard2.0\QueryFormatter.dll
-D:\git\QueryFormatter\Software\.Net\QueryFormatter\bin\Debug\netstandard2.0\QueryFormatter.pdb
-D:\git\QueryFormatter\Software\.Net\QueryFormatter\obj\Debug\netstandard2.0\QueryFormatter.AssemblyInfoInputs.cache
-D:\git\QueryFormatter\Software\.Net\QueryFormatter\obj\Debug\netstandard2.0\QueryFormatter.AssemblyInfo.cs
-D:\git\QueryFormatter\Software\.Net\QueryFormatter\obj\Debug\netstandard2.0\QueryFormatter.csproj.CoreCompileInputs.cache
-D:\git\QueryFormatter\Software\.Net\QueryFormatter\obj\Debug\netstandard2.0\QueryFormatter.dll
-D:\git\QueryFormatter\Software\.Net\QueryFormatter\obj\Debug\netstandard2.0\QueryFormatter.pdb
-D:\git\QueryFormatter\Software\.Net\QueryFormatter\obj\Debug\netstandard2.0\QueryFormatter.csprojAssemblyReference.cache
